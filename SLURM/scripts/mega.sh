@@ -181,17 +181,17 @@ touchfile8=${megadir}/touch8
 
 ## Check for existing merged_nodups files:
 
-merged_count=`find -L ${topDir} | grep merged_nodups.txt | wc -l`
+merged_count=`find -L ${topDir} | grep /merged_nodups.txt | wc -l`
 if [ "$merged_count" -lt "1" ]
 then
 	echo "***! Failed to find at least one merged_nodups files under ${topDir}"
 	exit 1
 fi
 
-merged_names=$(find -L ${topDir} | grep merged_nodups.txt.gz | awk '{print "<(gunzip -c",$1")"}' | tr '\n' ' ')
+merged_names=$(find -L ${topDir} | grep /merged_nodups.txt.gz | awk '{print "<(gunzip -c",$1")"}' | tr '\n' ' ')
 if [ ${#merged_names} -eq 0 ]
 then
-    merged_names=$(find -L ${topDir} | grep merged_nodups.txt | tr '\n' ' ')
+    merged_names=$(find -L ${topDir} | grep /merged_nodups.txt | tr '\n' ' ')
 fi
 inter_names=$(find -L ${topDir} | grep inter.txt | tr '\n' ' ')
 
