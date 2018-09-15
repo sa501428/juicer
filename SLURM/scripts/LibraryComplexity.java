@@ -53,7 +53,7 @@ class LibraryComplexity {
       try {
           ExecutorService executor = Executors.newFixedThreadPool(3);
 
-          Callable<Long> task1 = () -> {
+          Callable<Long> taskOptDups = () -> {
               File f = new File(args[0] + "/opt_dups.txt");
               if (f.exists()) {
                   try {
@@ -71,7 +71,7 @@ class LibraryComplexity {
               }
           };
 
-          Callable<Long> task2 = () -> {
+          Callable<Long> taskUniqueReads = () -> {
               File f = new File(args[0] + "/merged_nodups.txt");
               if (f.exists()) {
                   try {
@@ -89,7 +89,7 @@ class LibraryComplexity {
               }
           };
 
-          Callable<Long> task3 = () -> {
+          Callable<Long> taskReadPairs = () -> {
               File f = new File(args[0] + "/dups.txt");
               if (f.exists()) {
                   try {
@@ -107,9 +107,9 @@ class LibraryComplexity {
               }
           };
 
-          Future<Long> future1 = executor.submit(task1);
-          Future<Long> future2 = executor.submit(task2);
-          Future<Long> future3 = executor.submit(task3);
+          Future<Long> futureOptDups = executor.submit(taskOptDups);
+          Future<Long> futureUniqueReads = executor.submit(taskUniqueReads);
+          Future<Long> futureReadPairs = executor.submit(taskReadPairs);
 
         String fname = "inter.txt";
         if (args.length == 2) fname = args[1];
@@ -132,9 +132,9 @@ class LibraryComplexity {
           reader.close();
         }
 
-          opticalDups = future1.get();
-          uniqueReadPairs = future2.get();
-          readPairs = future3.get();
+          opticalDups = futureOptDups.get();
+          uniqueReadPairs = futureUniqueReads.get();
+          readPairs = futureReadPairs.get();
           executor.shutdown();
 
           if (somethingFailed.get()) {
