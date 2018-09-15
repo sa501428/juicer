@@ -24,13 +24,17 @@
  * Based on PicardTools 
  * Juicer version 1.5
  */
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.util.Locale;
-import java.io.FileReader;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.File;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 class LibraryComplexity {
   public static void main(String[] args) {
     if (args.length != 2 && args.length != 3 && args.length != 1) {
@@ -40,37 +44,78 @@ class LibraryComplexity {
     }
     NumberFormat nf = NumberFormat.getInstance(Locale.US);
 
-    BufferedReader reader = null;
+      AtomicBoolean somethingFailed = new AtomicBoolean(false);
     long readPairs = 0;
     long uniqueReadPairs = 0;
     long opticalDups = 0;
     long totalReadPairs = 0;
     if (args.length == 2 || args.length==1) {
       try {
-        File f = new File(args[0] + "/opt_dups.txt");
-        if (f.exists()) {
-          reader = new BufferedReader(new FileReader(f));
-          while (reader.readLine() != null) opticalDups++;
-          reader.close();
-        }
-        f = new File(args[0] + "/merged_nodups.txt");
-        if (f.exists()) {
-          reader = new BufferedReader(new FileReader(f));
-          while (reader.readLine() != null) uniqueReadPairs++;
-          reader.close();				
-        }
-        f = new File(args[0] + "/dups.txt");
-        if (f.exists()) {
-          reader = new BufferedReader(new FileReader(args[0] + "/dups.txt"));
-          while (reader.readLine() != null) readPairs++;
-          reader.close();				
-          readPairs += uniqueReadPairs; 
-        }
+          ExecutorService executor = Executors.newFixedThreadPool(3);
+
+          Callable<Long> task1 = () -> {
+              File f = new File(args[0] + "/opt_dups.txt");
+              if (f.exists()) {
+                  try {
+                      long opticalDupsT = 0L;
+                      BufferedReader reader = new BufferedReader(new FileReader(f));
+                      while (reader.readLine() != null) opticalDupsT++;
+                      reader.close();
+                      return opticalDupsT;
+                  } catch (Exception e) {
+                      somethingFailed.set(true);
+                      return 0L;
+                  }
+              } else {
+                  return 0L;
+              }
+          };
+
+          Callable<Long> task2 = () -> {
+              File f = new File(args[0] + "/merged_nodups.txt");
+              if (f.exists()) {
+                  try {
+                      long uniqueReadPairsT = 0L;
+                      BufferedReader reader = new BufferedReader(new FileReader(f));
+                      while (reader.readLine() != null) uniqueReadPairsT++;
+                      reader.close();
+                      return uniqueReadPairsT;
+                  } catch (Exception e) {
+                      somethingFailed.set(true);
+                      return 0L;
+                  }
+              } else {
+                  return 0L;
+              }
+          };
+
+          Callable<Long> task3 = () -> {
+              File f = new File(args[0] + "/dups.txt");
+              if (f.exists()) {
+                  try {
+                      long readPairsT = 0;
+                      BufferedReader reader = new BufferedReader(new FileReader(args[0] + "/dups.txt"));
+                      while (reader.readLine() != null) readPairsT++;
+                      reader.close();
+                      return readPairsT;
+                  } catch (Exception e) {
+                      somethingFailed.set(true);
+                      return 0L;
+                  }
+              } else {
+                  return 0L;
+              }
+          };
+
+          Future<Long> future1 = executor.submit(task1);
+          Future<Long> future2 = executor.submit(task2);
+          Future<Long> future3 = executor.submit(task3);
+
         String fname = "inter.txt";
         if (args.length == 2) fname = args[1];
-        f = new File(args[0] + "/" + fname);
+          File f = new File(args[0] + "/" + fname);
         if (f.exists()) {
-          reader = new BufferedReader(new FileReader(args[0] + "/" + fname));
+            BufferedReader reader = new BufferedReader(new FileReader(args[0] + "/" + fname));
           String line = reader.readLine();
           boolean done = false;
           while (line != null && !done) {
@@ -78,9 +123,7 @@ class LibraryComplexity {
               String[] parts = line.split(":");
               try {
                 totalReadPairs = nf.parse(parts[1].trim()).longValue();
-              }
-              catch (ParseException e) {
-                totalReadPairs = 0;
+              } catch (ParseException ignored) {
               }
               done = true;
             }
@@ -88,9 +131,25 @@ class LibraryComplexity {
           }
           reader.close();
         }
+
+          opticalDups = future1.get();
+          uniqueReadPairs = future2.get();
+          readPairs = future3.get();
+
+          if (somethingFailed.get()) {
+              System.err.println("Something failed in a thread");
+              System.exit(1);
+          }
+
       } catch (IOException error) {
-        System.err.println("Problem counting lines in merged_nodups and dups");
-        System.exit(1);
+          System.err.println("Problem counting lines in merged_nodups and dups");
+          System.exit(1);
+      } catch (InterruptedException e) {
+          System.err.println("Threads interrupted exception");
+          System.exit(1);
+      } catch (ExecutionException e) {
+          System.err.println("Threads execution exception");
+          System.exit(1);
       }
     }
     else {
@@ -103,8 +162,10 @@ class LibraryComplexity {
         System.err.println("When called with three arguments, must be integers");
         System.exit(1);
       }
-      readPairs += uniqueReadPairs;
+
     }
+
+      readPairs += uniqueReadPairs;
     NumberFormat decimalFormat = NumberFormat.getPercentInstance();
     decimalFormat.setMinimumFractionDigits(2);
     decimalFormat.setMaximumFractionDigits(2);
@@ -152,43 +213,41 @@ class LibraryComplexity {
    *     N = number of read pairs<br>
    *     C = number of distinct fragments observed in read pairs<br>
    */
-  public static Long estimateLibrarySize(final long readPairs, 
-                                         final long uniqueReadPairs) {
+  private static long estimateLibrarySize(final long readPairs,
+                                          final long uniqueReadPairs) {
     final long readPairDuplicates = readPairs - uniqueReadPairs;
     
     if (readPairs > 0 && readPairDuplicates > 0) {
-	    long n = readPairs;
-	    long c = uniqueReadPairs;
-	    
-	    double m = 1.0, M = 100.0;
-	    
-	    if (c >= n || f(m*c, c, n) < 0) {
-        throw new IllegalStateException("Invalid values for pairs and unique pairs: " + n + ", " + c);
+
+        double m = 1.0, M = 100.0;
+
+        if (uniqueReadPairs >= readPairs || f(m * uniqueReadPairs, uniqueReadPairs, readPairs) < 0) {
+            throw new IllegalStateException("Invalid values for pairs and unique pairs: " + readPairs + ", " + uniqueReadPairs);
 	    }
-      
-	    while( f(M*c, c, n) >= 0 ) {
+
+        while (f(M * uniqueReadPairs, uniqueReadPairs, readPairs) >= 0) {
         m = M;
         M *= 10.0;
 	    }
       
 	    double r = (m+M)/2.0;
-	    double u = f( r * c, c, n );
+        double u = f(r * uniqueReadPairs, uniqueReadPairs, readPairs);
 	    int i = 0;
 	    while (u != 0 && i < 1000) {
         if (u > 0) m = r;
         else M = r;
         r = (m+M)/2.0;
-        u = f( r * c, c, n );
+            u = f(r * uniqueReadPairs, uniqueReadPairs, readPairs);
         i++;
 	    }
 	    if (i == 1000) {
         System.err.println("Iterated 1000 times, returning estimate");
 	    }
-	    
-	    return (long) (c * (m+M)/2.0);
+
+        return (long) (uniqueReadPairs * (m + M) / 2.0);
     }
     else {
-	    return null;
+        return 0;
     }
   }
   
