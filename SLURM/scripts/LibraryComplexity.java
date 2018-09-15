@@ -135,6 +135,7 @@ class LibraryComplexity {
           opticalDups = future1.get();
           uniqueReadPairs = future2.get();
           readPairs = future3.get();
+          executor.shutdown();
 
           if (somethingFailed.get()) {
               System.err.println("Something failed in a thread");
